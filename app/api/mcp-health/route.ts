@@ -5,7 +5,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json();
+    const { url, headers } = await req.json();
 
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
@@ -14,6 +14,14 @@ export async function POST(req: NextRequest) {
     let client: Client | undefined = undefined;
     const baseUrl = new URL(url);
 
+    // Convert headers array to object
+    const headersObj = headers?.reduce((acc: Record<string, string>, header: { key: string; value: string }) => {
+      if (header.key) {
+        acc[header.key] = header.value || '';
+      }
+      return acc;
+    }, {}) || {};
+
     try {
       // First try Streamable HTTP transport
       client = new Client({
@@ -21,11 +29,16 @@ export async function POST(req: NextRequest) {
         version: '1.0.0'
       });
 
-      const transport = new StreamableHTTPClientTransport(baseUrl);
+      const transport = new StreamableHTTPClientTransport(baseUrl, {
+        requestInit: {
+          headers: headersObj,
+        },
+      });
       await client.connect(transport);
       console.log("Connected using Streamable HTTP transport");
     } catch (error) {
       // If that fails with a 4xx error, try the older SSE transport
+      // Note: SSE transport doesn't support custom headers in the same way
       console.log("Streamable HTTP connection failed, falling back to SSE transport");
       client = new Client({
         name: 'sse-client',
@@ -57,9 +70,10 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     console.error('MCP health check failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
       ready: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: errorMessage
     }, { status: 503 });
   }
 } 

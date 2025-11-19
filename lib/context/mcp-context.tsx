@@ -79,10 +79,34 @@ async function checkServerHealth(
       body: JSON.stringify({ url, headers }),
     });
 
+    if (!response.ok) {
+      // Try to parse error message from response
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      } catch {
+        // If response is not JSON, use status text
+      }
+      return {
+        ready: false,
+        error: errorMessage
+      };
+    }
+
     const result = await response.json();
     return result;
   } catch (error) {
     console.error(`Error checking server health for ${url}:`, error);
+    // Handle network errors and other fetch failures
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      return {
+        ready: false,
+        error: 'Network error: Unable to reach the server. Please check if the server is running and accessible.'
+      };
+    }
     return {
       ready: false,
       error: error instanceof Error ? error.message : 'Unknown error'
